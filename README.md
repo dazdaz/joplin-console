@@ -9,6 +9,7 @@ An interactive command-line browser for Joplin database files, providing a power
 - 📖 **Multiple View Modes**: View notes with metadata or content-only display
 - ✏️ **Edit Support**: Open notes in Vim editor with optional database saving
 - 📤 **Export to Multiple Formats**: Export individual notes or entire notebooks as Markdown (.md) or plain text (.txt) files
+- 📎 **File Attachment Extraction**: Automatically extracts and saves file attachments alongside exported notes
 - 🏗️ **Organized Folder Structure**: Automatic creation of folders for each subnotebook during export
 - ⌨️ **Arrow Key Support**: Navigate command history with UP/DOWN arrows
 - 💾 **Read/Write Modes**: Choose between read-only or edit-enabled modes
@@ -86,6 +87,8 @@ Once in the interactive browser, use these commands:
 - `n <note-id>` - View note with full metadata (timestamps, tags, attachments)
 - `cat <note-id>` - View note content only (no metadata)
 - `s <search-term>` - Search all notes (full-text search)
+- `e <note-id>` - Export note with attachments to specified directory
+- `e` - Export current folder with all attachments
 
 #### Editing
 - `vim <note-id>` - Open note in Vim editor
@@ -95,6 +98,8 @@ Once in the interactive browser, use these commands:
 #### Exporting
 - `e` - Export current folder (or all notes if at root level) in the chosen format
 - `e <note-id>` - Export single note as file in the chosen format
+
+**Note**: Export commands automatically extract and save any file attachments (images, PDFs, documents, etc.) to an `attachments` subdirectory within each export folder. Attachments are organized by note and maintain their original filenames.
 
 #### Help
 - `h`, `help`, or `?` - Show help message
@@ -176,7 +181,21 @@ The export preserves your complete notebook hierarchy:
 - Each main notebook becomes a folder
 - Subnotebooks create nested subdirectories
 - Notes are exported as individual files within their respective folders
+- All file attachments are automatically extracted and saved to an `attachments` subdirectory
+- Attachments are organized by note to prevent filename conflicts
 - Filenames are sanitized to be filesystem-safe (replacing invalid characters with underscores)
+
+### Attachment Handling
+When exporting notes with the `--include-metadata` flag, all file attachments (images, PDFs, documents, etc.) are automatically:
+
+- **Extracted** from the Joplin database resources table
+- **Saved** to organized subdirectories (`attachments/<note-title>/`)
+- **Linked** in the exported note content as proper markdown links or text references
+- **Preserved** with their original filenames and mime types
+
+**Note**: Attachments are only extracted when using `--include-metadata` flag, as this ensures comprehensive export with full note metadata including attachments. If you want to export notes without the attachment extraction (lighter exports), omit the `--include-metadata` flag.
+
+This ensures you get a complete, self-contained export that includes both your notes and all associated files, making it easy to migrate or backup your entire Joplin data including attachments.
 
 ## Direct Export (Batch Mode)
 
@@ -254,7 +273,7 @@ Ensure you have read access to the database file. For write mode, you'll need wr
 
 ## License
 
-This tool is provided as-is for interacting with Joplin database files. Please ensure you have appropriate permissions to access and modify your Joplin data.
+This project is licensed under the Apache License 2.0 - see the [APACHE.md](APACHE.md) file for details.
 
 ## Contributing
 

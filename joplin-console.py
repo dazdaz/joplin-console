@@ -273,6 +273,11 @@ class JoplinDB:
         """
         return self._exec(sql, (note_id,))
 
+    def get_resource_data(self, resource_id: str) -> Optional[bytes]:
+        """Get the binary data for a resource."""
+        rows = self._exec("SELECT data FROM resources WHERE id = ?", (resource_id,))
+        return rows[0]["data"] if rows else None
+
     def search_notes(self, term: str) -> List[sqlite3.Row]:
         """Simple full-text search using the built-in FTS table."""
         sql = """
@@ -290,7 +295,72 @@ class JoplinDB:
 # ----------------------------------------------------------------------
 # Export utilities
 # ----------------------------------------------------------------------
-def export_note_to_format(note: sqlite3.Row, tags: List[str], resources: List[sqlite3.Row], out_dir: Path, format_type: str = "md", include_metadata: bool = False):
+def extract_attachments(db: JoplinDB, resources: List[sqlite3.Row], note_title: str, out_dir: Path) -> Dict[str, str]:
+    """
+    Extract and save file attachments from a note.
+    
+    Args:
+        db: Database instance
+        resources: List of resource rows for the note
+        note_title: Title of the note (used for creating directory name)
+        out_dir: Output directory for the note
+        
+    Returns:
+        Dict mapping resource titles to their saved file paths
+    """
+    saved_files = {}
+    
+    if not resources:
+        return saved_files
+    
+    # Create attachments directory
+    safe_title = "".join(c if c not in r'\/:*?"<>|' else "_" for c in note_title)
+    attachments_dir = out_dir / "attachments" / safe_title
+    attachments_dir.mkdir(parents=True, exist_ok=True)
+    
+    print(f"    Extracting {len(resources)} attachments...")
+    
+    for resource in resources:
+        try:
+            resource_data = db.get_resource_data(resource["id"])
+            if not resource_data:
+                print(f"    ⚠️  No data found for resource: {resource['title']}")
+                continue
+                
+            # Use original filename if available, otherwise use title or ID
+            filename = resource.get("filename") or resource.get("title", f"resource_{resource['id'][:8]}")
+            
+            # Ensure filename is safe for filesystem
+            safe_filename = "".join(c if c not in r'\/:*?"<>|' else "_" for c in filename)
+            
+            # If no extension, try to determine from mime type
+            if "." not in safe_filename:
+                mime = resource.get("mime", "")
+                if mime.startswith("image/"):
+                    ext = mime.split("/")[-1]
+                    if ext:
+                        safe_filename = f"{safe_filename}.{ext}"
+                elif mime == "application/pdf":
+                    safe_filename = f"{safe_filename}.pdf"
+                elif mime.startswith("text/"):
+                    ext = mime.split("/")[-1] or "txt"
+                    safe_filename = f"{safe_filename}.{ext}"
+            
+            file_path = attachments_dir / safe_filename
+            
+            # Write the data
+            with open(file_path, "wb") as f:
+                f.write(resource_data)
+            
+            saved_files[resource["title"]] = str(file_path.relative_to(out_dir))
+            print(f"    ✓ {safe_filename} ({resource.get('mime', 'unknown')})")
+            
+        except Exception as e:
+            print(f"    ❌ Failed to extract {resource['title']}: {e}")
+    
+    return saved_files
+
+def export_note_to_format(note: sqlite3.Row, tags: List[str], resources: List[sqlite3.Row], out_dir: Path, format_type: str = "md", include_metadata: bool = False, db: Optional[JoplinDB] = None):
     """
     Export a note to either markdown (.md) or text (.txt) format.
     
@@ -301,11 +371,17 @@ def export_note_to_format(note: sqlite3.Row, tags: List[str], resources: List[sq
         out_dir: Output directory
         format_type: "md" for markdown, "txt" for plain text
         include_metadata: Whether to include metadata (timestamps, tags, attachments)
+        db: Database instance (required for extracting attachments)
     """
     out_dir.mkdir(parents=True, exist_ok=True)
     safe_title = "".join(c if c not in r'\/:*?"<>|' else "_" for c in note["title"])
     extension = "md" if format_type.lower() == "md" else "txt"
     file_path = out_dir / f"{safe_title}.{extension}"
+
+    # Extract attachments if database is provided and metadata is included
+    saved_files = {}
+    if include_metadata and db and resources:
+        saved_files = extract_attachments(db, resources, note["title"], out_dir)
 
     with open(file_path, "w", encoding="utf-8") as f:
         if format_type.lower() == "md":
@@ -325,7 +401,11 @@ def export_note_to_format(note: sqlite3.Row, tags: List[str], resources: List[sq
             if include_metadata and resources:
                 f.write("\n## Attachments\n")
                 for res in resources:
-                    f.write(f"- [{res['title']}]({res['filename']})\n")
+                    # Use saved file path if available, otherwise use original filename
+                    if res["title"] in saved_files:
+                        f.write(f"- [{res['title']}]({saved_files[res['title']]})\n")
+                    else:
+                        f.write(f"- [{res['title']}]({res['filename'] or 'unknown'})\n")
         else:
             # Plain text format
             f.write(f"{note['title']}\n")
@@ -344,7 +424,10 @@ def export_note_to_format(note: sqlite3.Row, tags: List[str], resources: List[sq
             if include_metadata and resources:
                 f.write("\n\nAttachments:\n")
                 for res in resources:
-                    f.write(f"- {res['title']} ({res['filename']})\n")
+                    if res["title"] in saved_files:
+                        f.write(f"- {res['title']} ({saved_files[res['title']]})\n")
+                    else:
+                        f.write(f"- {res['title']} ({res['filename'] or 'unknown'})\n")
                     
     print(f" → {file_path}")
 
@@ -367,7 +450,7 @@ def export_notebook_recursive(db: JoplinDB, folder: sqlite3.Row, out_dir: Path, 
     for note in notes:
         tags = db.get_tags_for_note(note["id"])
         resources = db.get_resources_for_note(note["id"])
-        export_note_to_format(note, tags, resources, folder_dir, format_type, include_metadata)
+        export_note_to_format(note, tags, resources, folder_dir, format_type, include_metadata, db)
 
     # Recurse into sub-folders
     subfolders = db.get_folders(folder["id"])
@@ -382,7 +465,9 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
     print("Browse, search, and export your Joplin notes.\n")
     print("Commands:")
     print("  l                 - List folders/notes at current location")
-    print("  cd <folder-id>    - Navigate into folder (use 'cd ..' to go up)")
+    print("  cd <folder-id>    - Navigate into folder")
+    print("  cd ..             - Go back to parent folder")
+    print("  cd /              - Go back to root level")
     print("  s <search-term>   - Search all notes (full-text search)")
     print("  n <note-id>       - View full note content")
     print("  cat <note-id>     - View note content (no metadata)")
@@ -394,6 +479,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
     print("  1. 'l' - see your folders")
     print("  2. 'cd <id>' - enter a folder")
     print("  3. 'n <id>' - read a note")
+    print("  4. 'cd /' - return to root level")
     print()
     print("💡 Tip: Use first 8 chars of any ID!")
     print()
@@ -473,9 +559,15 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                 else:
                     current_folder_id = None
                     print("Going back to root level")
+            elif arg == "/":
+                # Go to root folder
+                if current_folder_id:
+                    history.append(current_folder_id)
+                current_folder_id = None
+                print("Going to root level")
             else:
                 if not arg:
-                    print("Usage: cd <folder-id> or cd ..")
+                    print("Usage: cd <folder-id>, cd .., or cd /")
                     continue
                     
                 # Try to find folder by id prefix (first 8 chars are enough)
@@ -705,7 +797,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                     continue
                 tags = db.get_tags_for_note(note["id"])
                 resources = db.get_resources_for_note(note["id"])
-                export_note_to_format(note, tags, resources, export_dir, export_format, include_metadata)
+                export_note_to_format(note, tags, resources, export_dir, export_format, include_metadata, db)
                 safe_title = "".join(c if c not in r'\/:*?"<>|' else "_" for c in note["title"])
                 extension = "md" if export_format.lower() == "md" else "txt"
                 print(f"Exported → {export_dir / f'{safe_title}.{extension}'}")
@@ -719,7 +811,9 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             print("Browse, search, and export your Joplin notes.\n")
             print("Commands:")
             print("  l                 - List folders/notes at current location")
-            print("  cd <folder-id>    - Navigate into folder (use 'cd ..' to go up)")
+            print("  cd <folder-id>    - Navigate into folder")
+            print("  cd ..             - Go back to parent folder")
+            print("  cd /              - Go back to root level")
             print("  s <search-term>   - Search all notes (full-text search)")
             print("  n <note-id>       - View full note content with metadata")
             print("  cat <note-id>     - View note content (no metadata)")
@@ -732,6 +826,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             print("  1. 'l' - see your folders")
             print("  2. 'cd <id>' - enter a folder")
             print("  3. 'n <id>' - read a note")
+            print("  4. 'cd /' - return to root level")
             print()
             print("💡 Tip: Use first 8 chars of any ID!")
             print("💡 Use UP/DOWN arrows to navigate command history")
