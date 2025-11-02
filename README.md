@@ -98,6 +98,7 @@ Once in the interactive browser, use these commands:
 #### Editing
 - `vim <note-id>` - Open note in Vim editor
   - Read-only mode: Changes are not saved to database
+- `less <note-id>` - View note in less pager (supports both simple IDs and notebook-id/note-id format)
   - Write mode (`--write` flag): Changes are saved back to database
 
 #### Exporting
@@ -270,6 +271,7 @@ In write mode:
 You can reference notes using notebook context with the format `notebook-id/note-id`:
 - `n 38292a07/38292a03` - View note `38292a03` from notebook `38292a07`
 - `cat 38292a07/38292a03` - View note content with notebook context
+- `less 38292a07/38292a03` - View note in less pager with notebook context
 - `vim 38292a07/38292a03` - Edit note with notebook context
 - `e 38292a07/38292a03` - Export specific note using notebook context
 

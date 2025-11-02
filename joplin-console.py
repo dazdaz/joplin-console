@@ -515,6 +515,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
     print("  n <notebook-id>/<note-id> - View note with notebook context")
     print("  cat <note-id>     - View note content (no metadata)")
     print("  cat <notebook-id>/<note-id> - View note content with notebook context")
+    print("  less <note-id>    - View note in less pager")
     print("  vim <note-id>     - Open note in Vim editor")
     print(f"  e [note-id]       - Export to {export_format.upper()} (current folder or single note)")
     print("  q                 - Quit")
@@ -763,6 +764,43 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             continue
 
         # ------------------------------------------------------------------
+        # Show note content in less pager
+        # ------------------------------------------------------------------
+        if action == "less":
+            note_id = arg
+            if not note_id:
+                print("Usage: less <note-id>")
+                continue
+                
+            note = find_note_in_context(note_id)
+            if not note:
+                continue
+
+            import tempfile
+            import subprocess
+            
+            # Create temporary file with note content
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False) as temp_file:
+                temp_file.write(f"# {note['title']}\n\n")
+                if note["body"]:
+                    temp_file.write(note["body"])
+                temp_file_path = temp_file.name
+            
+            try:
+                # Open in less pager with raw escape sequences support
+                print(f"Opening '{note['title']}' in less pager...")
+                subprocess.call(['less', '-R', temp_file_path])
+                
+            except FileNotFoundError:
+                print("less not found. Please ensure less is installed.")
+            finally:
+                # Clean up temp file
+                import os
+                os.unlink(temp_file_path)
+            
+            continue
+
+        # ------------------------------------------------------------------
         # Open note in vim editor
         # ------------------------------------------------------------------
         if action in {"vim", "edit", "vi"}:
@@ -930,6 +968,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             print("  s <search-term>   - Search all notes (full-text search)")
             print("  n <note-id>       - View full note content with metadata")
             print("  cat <note-id>     - View note content (no metadata)")
+            print("  less <note-id>    - View note in less pager")
             print("  vim <note-id>     - Open note in Vim editor")
             print("  e [note-id]       - Export to Markdown (current folder or single note)")
             print("  h, help, ?        - Show this help message")
@@ -950,7 +989,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
         # ------------------------------------------------------------------
         # Unknown command
         # ------------------------------------------------------------------
-        print("Unknown command. Available: l, cd <id>, n <id>, s <term>, cat <id>, vim <id>, e [id], h, q")
+        print("Unknown command. Available: l, cd <id>, n <id>, s <term>, cat <id>, less <id>, vim <id>, e [id], h, q")
 
 # ----------------------------------------------------------------------
 # Main entry point
