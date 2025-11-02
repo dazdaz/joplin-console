@@ -903,10 +903,9 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                         print("Current folder not found.")
                 print(f"\nExport finished → {export_dir.resolve()}")
             else:
-                # Export single note
-                note = db.get_note(arg)
+                # Export single note (supporting notebook-id/note-id format)
+                note = find_note_in_context(arg)
                 if not note:
-                    print("Note not found.")
                     continue
                 tags = db.get_tags_for_note(note["id"])
                 resources = db.get_resources_for_note(note["id"])

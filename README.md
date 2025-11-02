@@ -92,6 +92,7 @@ Once in the interactive browser, use these commands:
 - `cat <notebook-id>/<note-id>` - View note content with notebook context
 - `s <search-term>` - Search all notes (case-insensitive, supports partial matching)
 - `e <note-id>` - Export note with attachments to specified directory
+- `e <notebook-id>/<note-id>` - Export specific note using notebook context format
 - `e` - Export current notebook with all attachments
 
 #### Editing
@@ -270,6 +271,7 @@ You can reference notes using notebook context with the format `notebook-id/note
 - `n 38292a07/38292a03` - View note `38292a03` from notebook `38292a07`
 - `cat 38292a07/38292a03` - View note content with notebook context
 - `vim 38292a07/38292a03` - Edit note with notebook context
+- `e 38292a07/38292a03` - Export specific note using notebook context
 
 This is especially useful when search results show `[38292a07/38292a03] My Note Title` format.
 
