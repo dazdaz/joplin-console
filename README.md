@@ -68,11 +68,11 @@ python3 joplin-shell.py --export-dir ./my_text_exports --export-format txt --exp
 # Export with metadata disabled (default behavior)
 python3 joplin-shell.py --export-dir ./my_exports --export-format md --include-metadata
 
-# Interactive mode with metadata disabled (default)
-python3 joplin-shell.py --export-format txt --export-dir ./my_exports
+# Interactive mode (default)
+python3 joplin-shell.py
 
 # Enable write mode for interactive editing
-python3 joplin-shell.py --export-dir ./my_exports --write
+python3 joplin-shell.py --write
 ```
 
 ### Interactive Commands
