@@ -244,6 +244,10 @@ class JoplinDB:
             sql = "SELECT * FROM folders WHERE parent_id = ? ORDER BY title"
             return self._exec(sql, (parent_id,))
 
+    def get_all_folders(self) -> List[sqlite3.Row]:
+        """Get all folders (including subfolders)."""
+        return self._exec("SELECT * FROM folders ORDER BY title")
+
     def get_note(self, note_id: str) -> Optional[sqlite3.Row]:
         rows = self._exec("SELECT * FROM notes WHERE id = ?", (note_id,))
         return rows[0] if rows else None
@@ -279,16 +283,52 @@ class JoplinDB:
         return rows[0]["data"] if rows else None
 
     def search_notes(self, term: str) -> List[sqlite3.Row]:
-        """Simple full-text search using the built-in FTS table."""
-        sql = """
-            SELECT n.*, f.parent_id
-            FROM notes_fts ft
-            JOIN notes n ON ft.rowid = n.rowid
-            LEFT JOIN folders f ON n.parent_id = f.id
-            WHERE notes_fts MATCH ?
-            LIMIT 50
-        """
-        return self._exec(sql, (term,))
+        """Search notes using both FTS and traditional methods for comprehensive results."""
+        try:
+            # First try FTS search for broader matches
+            sql_fts = """
+                SELECT n.*, n.parent_id as notebook_id
+                FROM notes_fts ft
+                JOIN notes n ON ft.rowid = n.rowid
+                WHERE notes_fts MATCH ?
+                LIMIT 50
+            """
+            fts_results = self._exec(sql_fts, (term,))
+            
+            # Also try case-insensitive LIKE search in titles and content for partial matches
+            sql_like = """
+                SELECT DISTINCT n.*, n.parent_id as notebook_id
+                FROM notes n
+                WHERE LOWER(n.title) LIKE LOWER(?)
+                OR LOWER(n.body) LIKE LOWER(?)
+                LIMIT 20
+            """
+            # Add wildcards for partial matching
+            like_term = f"%{term}%"
+            like_results = self._exec(sql_like, (like_term, like_term))
+            
+            # Combine and deduplicate results
+            all_results = fts_results + like_results
+            seen_ids = set()
+            unique_results = []
+            for result in all_results:
+                if result['id'] not in seen_ids:
+                    seen_ids.add(result['id'])
+                    unique_results.append(result)
+            
+            return unique_results[:50]  # Limit to 50 total results
+            
+        except sqlite3.OperationalError:
+            # If FTS fails, fall back to LIKE search only
+            sql_fallback = """
+                SELECT n.*, n.parent_id as notebook_id
+                FROM notes n
+                WHERE LOWER(n.title) LIKE LOWER(?)
+                OR LOWER(n.body) LIKE LOWER(?)
+                LIMIT 50
+            """
+            like_term = f"%{term}%"
+            return self._exec(sql_fallback, (like_term, like_term))
 
     def close(self):
         self.conn.close()
@@ -466,6 +506,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
     print("Browse, search, and export your Joplin notes.\n")
     print("Commands:")
     print("  l                 - List folders/notes at current location")
+    
     print("  cd <folder-id>    - Navigate into folder")
     print("  cd ..             - Go back to parent folder")
     print("  cd /              - Go back to root level")
@@ -531,25 +572,35 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                 current_folder_name = next((f["title"] for f in db.get_folders() if f["id"] == current_folder_id), "Unknown Folder")
                 print(f"\n=== {current_folder_name} ===")
             else:
-                print("\n=== Your Joplin Folders ===")
+                print("\n=== Your Joplin Notebooks ===")
 
             if folders:
-                print("\nFolders:")
-                for f in folders:
-                    note_count = len(db.get_notes_in_folder(f["id"]))
-                    print(f"  [{f['id'][:8]}] {f['title']} ({note_count} notes)")
+                if current_folder_id is None:
+                    print("\nNotebooks:")
+                    for f in folders:
+                        note_count = len(db.get_notes_in_folder(f["id"]))
+                        print(f"  [{f['id'][:8]}] 📁 {f['title']} ({note_count} notes)")
+                else:
+                    print("\nSubnotebooks:")
+                    for f in folders:
+                        note_count = len(db.get_notes_in_folder(f["id"]))
+                        print(f"  [{f['id'][:8]}] 📂 {f['title']} ({note_count} notes)")
             else:
-                print("(No subfolders)")
+                if current_folder_id is None:
+                    print("(No notebooks)")
+                else:
+                    print("(No subnotebooks)")
 
             if notes:
                 print(f"\nNotes ({len(notes)}):")
                 for n in notes:
                     tag_str = ", ".join(db.get_tags_for_note(n["id"])) or "—"
-                    print(f"  [{n['id'][:8]}] {n['title']} | tags: {tag_str}")
+                    print(f"  [{n['id'][:8]}] 📄 {n['title']} | tags: {tag_str}")
             else:
                 print("(No notes)")
 
             continue
+
 
         # ------------------------------------------------------------------
         # Change directory
@@ -573,8 +624,17 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                     print("Usage: cd <folder-id>, cd .., or cd /")
                     continue
                     
-                # Try to find folder by id prefix (first 8 chars are enough)
-                candidates = [f for f in db.get_folders(current_folder_id) if f["id"].startswith(arg)]
+                # Try to find folder by id prefix (first 8 chars are enough) - case insensitive
+                arg_lower = arg.lower()
+                
+                # First check subfolders of current location
+                candidates = [f for f in db.get_folders(current_folder_id) if f["id"].lower().startswith(arg_lower)]
+                
+                # If not found, search all folders (for root-level notebooks)
+                if not candidates:
+                    all_folders = db.get_all_folders()
+                    candidates = [f for f in all_folders if f["id"].lower().startswith(arg_lower)]
+                
                 if len(candidates) == 1:
                     if current_folder_id:
                         history.append(current_folder_id)
@@ -596,11 +656,9 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             if '/' in note_id:
                 notebook_id, note_id = note_id.split('/', 1)
                 
-                # First try to find the notebook
-                notebook = db.get_note(notebook_id)  # This will return None since notebook_id is a folder ID
-                # Get folder directly
-                folders = db.get_folders()
-                notebook_folder = next((f for f in folders if f["id"].startswith(notebook_id)), None)
+                # Get all folders and find the notebook
+                all_folders = db.get_all_folders()
+                notebook_folder = next((f for f in all_folders if f["id"].startswith(notebook_id)), None)
                 
                 if not notebook_folder:
                     print(f"Notebook {notebook_id[:8]} not found.")
@@ -791,6 +849,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                 continue
             
             print(f"Searching for: '{arg}'...")
+            # SQLite FTS is already case-insensitive by default
             results = db.search_notes(arg)
             
             if not results:
@@ -802,13 +861,22 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
                 # Access results as sqlite3.Row objects
                 note_id = result['id']
                 note_title = result['title']
-                parent_id = result.get('parent_id', '') if 'parent_id' in result.keys() else ''
+                # Get notebook_id (folder ID that contains this note)
+                try:
+                    notebook_id = result['notebook_id']
+                except (KeyError, IndexError):
+                    notebook_id = ''
                 
                 # Show notebook context if available
                 notebook_path = ""
-                if parent_id and parent_id != "":
-                    # Get the notebook ID for context
-                    notebook_path = f"{parent_id[:8]}/"
+                if notebook_id and notebook_id != "":
+                    # Get the notebook/folder for this note
+                    notebooks = db.get_folders()  # Get all folders
+                    notebook = next((f for f in notebooks if f['id'] == notebook_id), None)
+                    if notebook:
+                        notebook_path = f"{notebook['id'][:8]}/"
+                    else:
+                        notebook_path = f"{notebook_id[:8]}/"
                 print(f"  [{notebook_path}{note_id[:8]}] {note_title}")
             print()
             print("💡 Tip: Use the full path format (notebook-id/note-id) with n, cat, or vim commands!")
@@ -856,6 +924,7 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             print("Browse, search, and export your Joplin notes.\n")
             print("Commands:")
             print("  l                 - List folders/notes at current location")
+            
             print("  cd <folder-id>    - Navigate into folder")
             print("  cd ..             - Go back to parent folder")
             print("  cd /              - Go back to root level")
@@ -869,9 +938,10 @@ def interactive_browser(db: JoplinDB, export_root: Optional[Path] = None, export
             print()
             print("Quick start:")
             print("  1. 'l' - see your folders")
-            print("  2. 'cd <id>' - enter a folder")
-            print("  3. 'n <id>' - read a note")
-            print("  4. 'cd /' - return to root level")
+            
+            print("  3. 'cd <id>' - enter a folder")
+            print("  4. 'n <id>' - read a note")
+            print("  5. 'cd /' - return to root level")
             print()
             print("💡 Tip: Use first 8 chars of any ID!")
             print("💡 Use UP/DOWN arrows to navigate command history")

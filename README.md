@@ -4,15 +4,17 @@ An interactive command-line browser for Joplin database files, providing a power
 
 ## Features
 
-- 🗂️ **Browse Navigation**: Navigate through your Joplin folders and notes with intuitive commands
-- 🔍 **Full-text Search**: Search across all notes using Joplin's built-in full-text search
+- 📁 **Browse Navigation**: Navigate through your Joplin notebooks and notes with intuitive commands
+- 🔍 **Case-Insensitive Search**: Search across all notes using Joplin's built-in full-text search with case-insensitive and partial matching
 - 📖 **Multiple View Modes**: View notes with metadata or content-only display
 - ✏️ **Edit Support**: Open notes in Vim editor with optional database saving
 - 📤 **Export to Multiple Formats**: Export individual notes or entire notebooks as Markdown (.md) or plain text (.txt) files
 - 📎 **File Attachment Extraction**: Automatically extracts and saves file attachments alongside exported notes
-- 🏗️ **Organized Folder Structure**: Automatic creation of folders for each subnotebook during export
+- 🏗️ **Organized Notebook Structure**: Automatic creation of folders for each subnotebook during export
 - ⌨️ **Arrow Key Support**: Navigate command history with UP/DOWN arrows
 - 💾 **Read/Write Modes**: Choose between read-only or edit-enabled modes
+- 🎯 **Case-Insensitive Navigation**: Navigate to notebooks using any case combination (5D33432D or 5d33432d)
+- 📊 **Enhanced Visual Display**: Emoji icons distinguish item types: 📁 root notebooks, 📂 subnotebooks, 📄 notes for better visual clarity
 
 ## Installation
 
@@ -78,19 +80,19 @@ python3 joplin-console.py --export-dir ./my_exports --write
 Once in the interactive browser, use these commands:
 
 #### Navigation
-- `l` - List current folder contents (folders and notes)
-- `cd <folder-id>` - Navigate into a folder (use first 8 chars of ID)
-- `cd ..` - Go back to parent folder
-- `cd` (no args) - Go back to root level
+- `l` - List current notebook contents (notebooks and notes) with enhanced visual formatting
+- `cd <notebook-id>` - Navigate into a notebook (use first 8 chars of ID, case-insensitive)
+- `cd ..` - Go back to parent notebook
+- `cd /` - Go back to root level
 
 #### Viewing Notes
 - `n <note-id>` - View note with full metadata (timestamps, tags, attachments)
 - `n <notebook-id>/<note-id>` - View note with notebook context
 - `cat <note-id>` - View note content only (no metadata)
 - `cat <notebook-id>/<note-id>` - View note content with notebook context
-- `s <search-term>` - Search all notes (full-text search)
+- `s <search-term>` - Search all notes (case-insensitive, supports partial matching)
 - `e <note-id>` - Export note with attachments to specified directory
-- `e` - Export current folder with all attachments
+- `e` - Export current notebook with all attachments
 
 #### Editing
 - `vim <note-id>` - Open note in Vim editor
@@ -98,18 +100,10 @@ Once in the interactive browser, use these commands:
   - Write mode (`--write` flag): Changes are saved back to database
 
 #### Exporting
-- `e` - Export current folder (or all notes if at root level) in the chosen format
+- `e` - Export current notebook (or all notes if at root level) in the chosen format
 - `e <note-id>` - Export single note as file in the chosen format
 
 **Note**: Export commands automatically extract and save any file attachments (images, PDFs, documents, etc.) to an `attachments` subdirectory within each export folder. Attachments are organized by note and maintain their original filenames.
-
-### Path Format Support
-You can reference notes using notebook context with the format `notebook-id/note-id`:
-- `n 38292a07/38292a03` - View note `38292a03` from notebook `38292a07`
-- `cat 38292a07/38292a03` - View note content with notebook context
-- `vim 38292a07/38292a03` - Edit note with notebook context
-
-This is especially useful when search results show `[38292a07/38292a03] My Note Title` format.
 
 #### Help
 - `h`, `help`, or `?` - Show help message
@@ -119,40 +113,60 @@ This is especially useful when search results show `[38292a07/38292a03] My Note 
 
 ### Quick Start Example
 
-1. **List your folders:**
+1. **List your notebooks:**
    ```
    (root) > l
    ```
 
-2. **Navigate into a folder:**
+2. **Navigate into a notebook:**
    ```
-   (root) > cd a1b2c3d4
+   (root) > cd 5d33432D
    ```
+   (Case-insensitive: works with 5d33432D, 5D33432D, or 5d33432d)
 
 3. **View a note:**
    ```
-   FolderName > n e5f6g7h8
+   NotebookName > n 80cbd02d
    ```
 
-4. **Search for content:**
+4. **Search for content (case-insensitive):**
    ```
-   FolderName > s meeting notes
+   NotebookName > s Mfit
    ```
+   (Finds mFit, MFIT, mfit, etc.)
 
 5. **Export notes:**
    ```
-   FolderName > e
+   NotebookName > e
    ```
 
 ## Tips & Tricks
 
 - **ID Shortening**: Use only the first 8 characters of any ID for convenience
+- **Case-Insensitive Navigation**: Navigate to notebooks using any case combination
+- **Case-Insensitive Search**: Search terms work with any capitalization (mFit, MFIT, mfit all work)
+- **Partial Matching**: Search finds partial words within note titles and content
 - **Command History**: Use UP/DOWN arrow keys to navigate through previous commands
-- **Fuzzy Navigation**: `cd` commands work with partial ID matches
+- **Visual Enhancement**: Look for 📁 (folders) and 📄 (notes) icons in list output
 - **Automatic Database Detection**: The script automatically finds your Joplin database on:
   - Linux: `~/.config/joplin-desktop/database.sqlite`
   - macOS: `~/.config/joplin-desktop/database.sqlite`
   - Windows: `%APPDATA%\Joplin\database.sqlite`
+
+### Search Capabilities
+
+The enhanced search functionality provides:
+
+- **Case-Insensitive Matching**: `mfit`, `Mfit`, `MFIT` all find the same results
+- **Partial Word Matching**: `fit` finds `mFit`, `fitness`, `benefits`, etc.
+- **Content & Title Search**: Searches both note titles and note body content
+- **Comprehensive Results**: Combines SQLite FTS and LIKE search for complete coverage
+
+### Navigation Improvements
+
+- **Global Search**: If a notebook isn't found in current location, searches all notebooks globally
+- **Case-Insensitive IDs**: Works with any capitalization (5d33432D, 5D33432d, etc.)
+- **Smart Fallback**: Falls back to global notebook search when local search fails
 
 ## Export Format
 
@@ -251,6 +265,14 @@ In write mode:
 - You'll see a confirmation message when notes are updated
 - ⚠️ **Warning**: Changes are permanent and affect your Joplin data
 
+## Path Format Support
+You can reference notes using notebook context with the format `notebook-id/note-id`:
+- `n 38292a07/38292a03` - View note `38292a03` from notebook `38292a07`
+- `cat 38292a07/38292a03` - View note content with notebook context
+- `vim 38292a07/38292a03` - Edit note with notebook context
+
+This is especially useful when search results show `[38292a07/38292a03] My Note Title` format.
+
 ## Error Handling
 
 The browser includes robust error handling:
@@ -258,6 +280,8 @@ The browser includes robust error handling:
 - Search with no results displays an appropriate message
 - Database connection issues are reported clearly
 - Fallback input methods for systems without readline support
+- Case-insensitive matching prevents "not found" errors due to capitalization
+- Global notebook search fallback when local navigation fails
 
 ## Troubleshooting
 
@@ -273,13 +297,25 @@ If Vim is not installed, the `vim` command will show an error. Install Vim or us
 ### Permission Issues
 Ensure you have read access to the database file. For write mode, you'll need write access to the database file.
 
+### Navigation Issues
+- Use only the first 8 characters of notebook IDs
+- Case doesn't matter: `5d33432D` and `5d33432d` work the same
+- If a notebook isn't found in your current location, the system will search all notebooks globally
+
+### Search Issues
+- Search is case-insensitive: `mfit`, `Mfit`, `MFIT` all work
+- Use partial terms: `fit` will find `mFit`, `fitness`, etc.
+- Search covers both note titles and content
+
 ## Technical Details
 
 - Built with Python's SQLite3 module
 - Uses Joplin's database schema directly
-- Supports Joplin's full-text search (FTS) capabilities
+- Supports Joplin's full-text search (FTS) capabilities with enhanced LIKE search fallback
 - Cross-platform compatible (Linux, macOS, Windows)
-- Handles Joplin's folder hierarchy and note relationships
+- Handles Joplin's notebook hierarchy and note relationships
+- Case-insensitive search and navigation throughout
+- Enhanced visual indicators and user experience
 
 ## License
 
