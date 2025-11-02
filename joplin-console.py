@@ -900,7 +900,7 @@ def main():
             # Linux
             Path.home() / ".config/joplin-desktop/database.sqlite",
             # macOS
-            Path.home() / "Library/Application Support/Joplin/database.sqlite",
+            Path.home() / ".config/joplin-desktop/database.sqlite",
             # Windows
             Path(os.getenv("APPDATA", "")) / "Joplin/database.sqlite",
         ]

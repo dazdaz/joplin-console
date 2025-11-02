@@ -141,7 +141,7 @@ Once in the interactive browser, use these commands:
 - **Fuzzy Navigation**: `cd` commands work with partial ID matches
 - **Automatic Database Detection**: The script automatically finds your Joplin database on:
   - Linux: `~/.config/joplin-desktop/database.sqlite`
-  - macOS: `~/Library/Application Support/Joplin/database.sqlite`
+  - macOS: `~/.config/joplin-desktop/database.sqlite`
   - Windows: `%APPDATA%\Joplin\database.sqlite`
 
 ## Export Format
@@ -273,7 +273,7 @@ Ensure you have read access to the database file. For write mode, you'll need wr
 
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [APACHE.md](APACHE.md) file for details.
+This project is licensed under the Apache License 2.0 - see the [LICENSE.md](LICENSE.md) file for details.
 
 ## Contributing
 
